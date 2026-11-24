@@ -54,7 +54,8 @@ def build_standalone():
     run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--console",
          "--name", APP, "--distpath", str(DIST / "standalone"), "--workpath", str(work),
          "--specpath", str(work), "--paths", str(ROOT),
-         "--collect-submodules", "dns", "--hidden-import", "PIL.Image", "--hidden-import", "pypdf", str(entry)])
+         "--collect-submodules", "dns", "--hidden-import", "PIL.Image", "--hidden-import", "pypdf",
+         "--collect-data", "certifi", str(entry)])
     built = DIST / "standalone" / APP
     if not (built.exists() and built.is_dir()):
         raise SystemExit(f"PyInstaller did not produce {built}")

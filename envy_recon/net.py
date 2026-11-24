@@ -27,6 +27,17 @@ class NetworkDisabled(ReconError):
     """Raised when a lookup needs the network but offline mode is on."""
 
 
+def tls_context() -> ssl.SSLContext:
+    """Verified TLS using certifi's Mozilla roots, which ship inside the standalone
+    builds (a frozen app can't count on finding the OS certificate store; on macOS
+    it doesn't). Falls back to the system defaults if certifi is missing."""
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except (ImportError, OSError):
+        return ssl.create_default_context()
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
@@ -71,8 +82,9 @@ class Net:
         if accept:
             headers["Accept"] = accept
         req = urllib.request.Request(url, method=method, headers=headers)
-        opener = (urllib.request.build_opener() if follow
-                  else urllib.request.build_opener(_NoRedirect))
+        https = urllib.request.HTTPSHandler(context=tls_context())
+        opener = (urllib.request.build_opener(https) if follow
+                  else urllib.request.build_opener(https, _NoRedirect))
         try:
             resp = opener.open(req, timeout=self.timeout)
         except urllib.error.HTTPError as exc:
@@ -124,7 +136,7 @@ class Net:
     def tls_handshake(self, host: str, port: int = 443):
         """Return (peer cert dict, TLS version, cipher name) for a verified connection."""
         self.require_online(f"TLS {host}:{port}")
-        ctx = ssl.create_default_context()
+        ctx = tls_context()
         try:
             with socket.create_connection((host, port), timeout=self.timeout) as sock:
                 with ctx.wrap_socket(sock, server_hostname=host) as tls:

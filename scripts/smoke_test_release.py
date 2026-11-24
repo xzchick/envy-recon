@@ -4,7 +4,8 @@
 2. ``meta <file> --json`` runs the offline metadata path end to end (dnspython,
    Pillow and pypdf all load inside the bundle) on a real PNG and PDF.
 3. ``dns example.com --offline`` is refused with exit code 2 (offline mode holds).
-No network is used.
+4. ``headers github.com`` makes one real HTTPS request, proving the bundle carries
+   working TLS roots (v0.1.0's macOS build couldn't verify any certificate).
 """
 
 import json
@@ -54,6 +55,10 @@ def main():
 
     blocked = run(binary, "dns", "example.com", "--offline", expect=2)
     assert "Offline mode is on" in blocked.stderr, blocked.stderr
+
+    online = run(binary, "headers", "github.com")
+    assert "CERTIFICATE_VERIFY_FAILED" not in online.stdout + online.stderr, online.stderr
+    print("HTTPS from the bundle works")
     print("standalone smoke test passed")
 
 

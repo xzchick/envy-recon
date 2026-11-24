@@ -206,3 +206,13 @@ class OfflineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TlsContextTests(unittest.TestCase):
+    def test_context_verifies_with_bundled_roots(self):
+        import ssl
+        from envy_recon.net import tls_context
+        ctx = tls_context()
+        self.assertEqual(ctx.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(ctx.check_hostname)
+        self.assertGreater(ctx.cert_store_stats()["x509_ca"], 50)

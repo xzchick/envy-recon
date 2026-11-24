@@ -2,6 +2,14 @@
 
 All notable changes to this project. This project adheres to semantic versioning.
 
+## v0.1.1 — 2026-11-24
+
+- Fix: the macOS standalone build couldn't verify any HTTPS certificate
+  (`CERTIFICATE_VERIFY_FAILED`), so every web lookup failed. Recon now ships
+  certifi's root certificates in every bundle and uses them for HTTPS and `tls`.
+- The release smoke test now makes a real HTTPS request from the built bundle on
+  each OS, so this can't regress unnoticed.
+
 ## v0.1.0 — 2026-11-24
 
 - Initial release: interactive OSINT terminal and one-shot CLI
