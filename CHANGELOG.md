@@ -2,6 +2,11 @@
 
 All notable changes to this project. This project adheres to semantic versioning.
 
+## Unreleased
+
+- A container image, `ghcr.io/xzchick/envy-recon` (amd64 + arm64), tested in CI (offline metadata,
+  a real HTTPS request, non-root user), published with provenance and an SBOM, and signed with Sigstore
+
 ## v0.1.1 — 2026-11-24
 
 - Fix: the macOS standalone build couldn't verify any HTTPS certificate

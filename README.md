@@ -89,6 +89,27 @@ Prefer to inspect first? Download `install.sh`, read it, then run `sh install.sh
 
 **From source** (any OS, Python 3.10+): `pip install .` then `envy-recon`.
 
+## Run with Docker
+
+The same terminal as a container image, for Linux, macOS or Windows with Docker
+(`linux/amd64` and `linux/arm64`):
+
+```sh
+docker run --rm -it ghcr.io/xzchick/envy-recon                          # interactive terminal
+docker run --rm ghcr.io/xzchick/envy-recon domain example.com           # one lookup
+docker run --rm -v "$PWD:/work" ghcr.io/xzchick/envy-recon meta photo.jpg --offline
+```
+
+Mount a folder at `/work` to read or save files. The image runs as a non-root user, and
+every published image is signed with Sigstore (keyless) and carries build provenance and
+an SBOM:
+
+```sh
+cosign verify ghcr.io/xzchick/envy-recon:latest \
+  --certificate-identity-regexp 'https://github.com/xzchick/envy-recon/.github/workflows/container.yml@.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
 ## Verifying a release
 
 Every release's `SHA256SUMS.txt` is signed with Sigstore (keyless) and ships with a CycloneDX SBOM:

@@ -1,0 +1,115 @@
+name: Container
+
+# Build the ENVY Recon container image and test it on every push and pull request.
+# A v* tag publishes it to ghcr.io/xzchick/envy-recon (linux/amd64 + linux/arm64) with
+# build provenance and an SBOM, signed with Sigstore (keyless). A manual run with a tag
+# publishes that existing release's image.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish (e.g. v0.1.1)"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/xzchick/envy-recon
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write    # push to ghcr.io (publish runs only)
+      id-token: write    # Sigstore keyless signing (publish runs only)
+    steps:
+      - name: Decide what to build
+        id: plan
+        env:   # passed as variables, never pasted into the script
+          EVENT: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            tag="$INPUT_TAG"
+          elif [ "$REF_TYPE" = "tag" ]; then
+            tag="$REF_NAME"
+          else
+            tag=""
+          fi
+          case "$tag" in ""|v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "not a release tag: $tag"; exit 1 ;; esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "publish=$([ -n "$tag" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.plan.outputs.tag || github.ref }}
+          fetch-depth: 0
+      - name: Use this workflow's Dockerfile for releases made before it existed
+        run: |
+          for f in Dockerfile .dockerignore; do
+            [ -f "$f" ] || git show "${{ github.sha }}:$f" > "$f"
+          done
+          git log -1 --format='Building the app source at %h (%d)'
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build for testing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: envy-recon:test
+      - name: Test the image
+        run: |
+          set -eux
+          docker run --rm envy-recon:test --version
+          mkdir -p sample && printf 'hello from the container test\n' > sample/note.txt
+          docker run --rm -v "$PWD/sample:/work:ro" envy-recon:test meta note.txt --offline | tee meta.out
+          grep -qi "sha256" meta.out
+          # A real HTTPS request from inside the container: certificates must verify.
+          docker run --rm envy-recon:test headers github.com | tee headers.out
+          grep -q "status: 200" headers.out
+          ! grep -q CERTIFICATE_VERIFY_FAILED headers.out
+          # It runs as a non-root user.
+          [ "$(docker run --rm --entrypoint id envy-recon:test -u)" != "0" ]
+
+      - name: Log in to ghcr.io
+        if: steps.plan.outputs.publish == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish (amd64 + arm64)
+        if: steps.plan.outputs.publish == 'true'
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.plan.outputs.version }}
+            ${{ env.IMAGE }}:latest
+      - name: Install cosign
+        if: steps.plan.outputs.publish == 'true'
+        uses: sigstore/cosign-installer@v3.7.0
+      - name: Sign the image (Sigstore keyless)
+        if: steps.plan.outputs.publish == 'true'
+        run: |
+          cosign sign --yes "${{ env.IMAGE }}@${{ steps.push.outputs.digest }}"
+          cosign verify "${{ env.IMAGE }}@${{ steps.push.outputs.digest }}" \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/container.yml@.*" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+          echo "Published and signed ${{ env.IMAGE }}:${{ steps.plan.outputs.version }} (${{ steps.push.outputs.digest }})"
